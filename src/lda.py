@@ -34,7 +34,6 @@ def get_interview_stopwords():
 def clean_and_tokenize_interview(text, stopwords, allowed_pos=('n', 'v', 'vn', 'a', 'ad', 'd')):
     """
     针对访谈文本的分词与词性过滤
-    保留了 d(副词) 和 a(形容词) 以捕捉受访者的态度与情感
     """
     if not isinstance(text, str) or text.strip() == '' or text.strip().lower() == 'nan':
         return []
