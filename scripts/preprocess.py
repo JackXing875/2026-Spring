@@ -2,164 +2,121 @@ import re
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Any
 from docx import Document
 
-# 配置日志
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%H:%M:%S'
 )
 logger = logging.getLogger(__name__)
 
-class InterviewETL:
+class PerfectInterviewETL:
     def __init__(self, base_dir: str):
-        """
-        初始化项目路径
-        """
         self.base_dir = Path(base_dir)
         self.raw_dir = self.base_dir / "data" / "raw"
         self.processed_dir = self.base_dir / "data" / "processed"
         self.output_file = self.processed_dir / "structured_interviews.jsonl"
-        
-        # 确保输出目录存在
         self.processed_dir.mkdir(parents=True, exist_ok=True)
 
-        # 预编译正则表达式以提升大规模文本的解析性能
-        # 模式1: 姓名 时间戳 内容 (例如: 赵  00:32:08 谁会在直播间里看你...)
-        self.pat_timestamp = re.compile(r'^([^\d\s\:\：]+)\s*(?:[\d号讲话人]*\s*)?\d{2}:\d{2}:\d{2}\s*(.*)$')
-        # 模式2: 角色:内容 或 角色：内容 (例如: 团队 那我们先问一下... 或 园长：不，因为...)
-        self.pat_qa = re.compile(r'^([^\:：\s]{1,5})[\:：\s]+(.*)$')
 
-    def read_docx(self, file_path: Path) -> List[str]:
-        """
-        读取 docx 文件，返回清洗过空行的段落列表
-        """
+        self.pat_time = re.compile(r'^(.+?)\s+(\d{2}:\d{2}(?::\d{2})?)\s*(.*)$')
+
+        self.pat_colon = re.compile(r'^([^:：]{1,15})[:：]\s*(.*)$')
+
+        known_roles = [
+            r'\d+号讲话人(?:\s+[^\s]+)?', 
+            r'团队', r'农户', r'书记', r'负责人', r'技术人员', r'园长', r'主播\d*',
+            r'[赵王吴徐邢杨]\s*[赵王吴徐邢杨]?' 
+        ]
+        roles_pattern = '|'.join(known_roles)
+        self.pat_space = re.compile(rf'^({roles_pattern})\s+(.+)$')
+
+    def read_docx(self, file_path: Path):
         try:
             doc = Document(file_path)
-            # 剔除纯空格或空段落
-            paragraphs = [p.text.strip() for p in doc.paragraphs if p.text.strip()]
-            return paragraphs
+            return [p.text.strip() for p in doc.paragraphs if p.text.strip()]
         except Exception as e:
-            logger.error(f"读取文件失败 {file_path.name}: {e}")
+            logger.error(f"[DEBUG] 读取 {file_path.name} 失败: {e}")
             return []
 
-    def infer_metadata(self, filename: str) -> Dict[str, str]:
-        """
-        根据文件名推断元数据（地点、大致角色分类）
-        """
-        metadata = {"location": "未知", "doc_type": "访谈记录"}
-        
-        if "保南村" in filename or "农户" in filename or "书记" in filename:
-            metadata["location"] = "宁夏保南村"
-        elif "河北" in filename or "行唐" in filename or "双创园" in filename or "园长" in filename:
-            metadata["location"] = "河北省龙洞村/行唐县"
-        elif "鲲之益" in filename or "哈校长" in filename or "技术人员" in filename or "负责人" in filename:
-            metadata["location"] = "企业端(上海/银川)"
-            
-        if "梳理" in filename or "整理" in filename and "访谈" not in filename:
-            metadata["doc_type"] = "结构化总结"
-            
-        return metadata
+    def infer_location(self, filename: str) -> str:
+        if any(kw in filename for kw in ["保南村", "农户", "书记", "哈校长"]): return "宁夏保南村"
+        if any(kw in filename for kw in ["河北", "行唐", "双创园", "园长"]): return "河北省龙洞村"
+        if any(kw in filename for kw in ["鲲之益", "技术人员", "负责人"]): return "企业端"
+        return "贵州省西安村(或未知)"
 
-    def parse_paragraphs(self, paragraphs: List[str], metadata: Dict[str, str], filename: str) -> List[Dict[str, Any]]:
-        """
-        将段落解析为结构化的对话字典
-        """
+    def parse_text(self, paragraphs: list, filename: str, location: str):
         parsed_data = []
-        current_speaker = "文档摘要/背景"
+        current_speaker = "文档背景/研究员"
         current_text = []
 
-        # 针对已经是总结性质的文档，直接按段落存储
-        if metadata["doc_type"] == "结构化总结":
+        if "梳理" in filename or ("整理" in filename and "访谈整理" not in filename):
             for p in paragraphs:
-                parsed_data.append({
-                    "source_file": filename,
-                    "location": metadata["location"],
-                    "speaker": "研究员",
-                    "text": p
-                })
+                if p: parsed_data.append({"source_file": filename, "location": location, "speaker": "总结归纳", "text": p})
             return parsed_data
 
-        # 针对对话性质的文档进行正则切分
         for line in paragraphs:
-            # 过滤掉无意义的分割线
+            # 过滤纯分割线
             if set(line) == {'-'} or "---" in line:
                 continue
-                
-            match_ts = self.pat_timestamp.match(line)
-            match_qa = self.pat_qa.match(line)
 
-            if match_ts:
-                if current_text:
-                    parsed_data.append(self._build_record(filename, metadata, current_speaker, current_text))
-                current_speaker = match_ts.group(1).strip()
-                current_text = [match_ts.group(2).strip()]
-                
-            elif match_qa:
-                if current_text:
-                    parsed_data.append(self._build_record(filename, metadata, current_speaker, current_text))
-                current_speaker = match_qa.group(1).strip()
-                current_text = [match_qa.group(2).strip()]
-                
-            else:
-                # 若未匹配到说话人，视为上一段对话的延续
-                current_text.append(line)
+            # 匹配时间戳
+            match_time = self.pat_time.match(line)
+            if match_time:
+                self._save_record(parsed_data, filename, location, current_speaker, current_text)
+                current_speaker = match_time.group(1).strip()
+                current_text = [match_time.group(3).strip()]
+                continue
 
-        # 保存最后一段
-        if current_text:
-            parsed_data.append(self._build_record(filename, metadata, current_speaker, current_text))
+            match_colon = self.pat_colon.match(line)
+            if match_colon and len(match_colon.group(1)) <= 15 and " " not in match_colon.group(1).strip():
+                self._save_record(parsed_data, filename, location, current_speaker, current_text)
+                current_speaker = match_colon.group(1).strip()
+                current_text = [match_colon.group(2).strip()]
+                continue
 
+            match_space = self.pat_space.match(line)
+            if match_space:
+                self._save_record(parsed_data, filename, location, current_speaker, current_text)
+                current_speaker = match_space.group(1).strip()
+                current_text = [match_space.group(2).strip()]
+                continue
+            current_text.append(line)
+
+        self._save_record(parsed_data, filename, location, current_speaker, current_text)
         return parsed_data
 
-    def _build_record(self, filename: str, metadata: Dict[str, str], speaker: str, text_list: List[str]) -> Dict[str, Any]:
-        """
-        构建单条 JSONL 记录
-        """
-        return {
-            "source_file": filename,
-            "location": metadata["location"],
-            "speaker": speaker,
-            "text": " ".join(text_list)
-        }
+    def _save_record(self, container, filename, location, speaker, text_list):
+        text = " ".join(text_list).strip()
+        if text:
+            container.append({
+                "source_file": filename,
+                "location": location,
+                "speaker": speaker,
+                "text": text
+            })
+            text_list.clear()
 
     def run(self):
-        """
-        执行 ETL 管道
-        """
         docx_files = list(self.raw_dir.glob("*.docx"))
-        if not docx_files:
-            logger.warning(f"在 {self.raw_dir} 中未找到任何 .docx 文件，请检查路径！")
-            return
-
-        logger.info(f"找到 {len(docx_files)} 个 Docx 文件，开始处理...")
+        logger.info(f"[INFO] 开始解析，共发现 {len(docx_files)} 个访谈文档...")
         
         total_records = 0
         with open(self.output_file, 'w', encoding='utf-8') as f:
             for file_path in docx_files:
-                logger.info(f"正在解析: {file_path.name}")
-                
-                # 1. Extract
+                loc = self.infer_location(file_path.name)
                 paragraphs = self.read_docx(file_path)
+                records = self.parse_text(paragraphs, file_path.name, loc)
                 
-                # 2. Transform
-                metadata = self.infer_metadata(file_path.name)
-                parsed_records = self.parse_paragraphs(paragraphs, metadata, file_path.name)
+                for r in records:
+                    f.write(json.dumps(r, ensure_ascii=False) + '\n')
+                    total_records += 1
+                logger.info(f"[INFO] [{file_path.name}] 解析完毕，提取 {len(records)} 条对话。")
                 
-                # 3. Load
-                for record in parsed_records:
-                    if record["text"].strip(): # 剔除空文本
-                        f.write(json.dumps(record, ensure_ascii=False) + '\n')
-                        total_records += 1
-                        
-        logger.info(f"🎉 ETL 处理完成！共提取 {total_records} 条结构化数据。")
-        logger.info(f"📁 输出文件路径: {self.output_file.absolute()}")
-
+        logger.info(f"[INFO] 提取了 {total_records} 条结构化数据！")
 
 if __name__ == "__main__":
-    # 假设你的终端当前在项目的根目录 (2026-Spring) 运行此脚本
-    # 获取项目根目录的绝对路径
     PROJECT_ROOT = Path(__file__).resolve().parent.parent
-    
-    etl = InterviewETL(base_dir=PROJECT_ROOT)
+    etl = PerfectInterviewETL(base_dir=PROJECT_ROOT)
     etl.run()
