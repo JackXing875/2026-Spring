@@ -45,7 +45,7 @@ def clean_and_tokenize_interview(text, stopwords, allowed_pos=('n', 'v', 'vn', '
     valid_words = []
     
     for word, flag in words:
-        # 放宽单字词限制：部分单字动词/形容词在访谈中极具表意性（如“贵”、“差”、“好”、“赚”）
+        # 放宽单字词限制
         if word not in stopwords and len(word) >= 1 and flag.startswith(allowed_pos):
             valid_words.append(word)
             
