@@ -22,7 +22,8 @@ class TfidfAnalyzer:
     def __init__(self, base_dir: str):
         self.base_dir = Path(base_dir)
         self.input_file = self.base_dir / "data" / "processed" / "structured_interviews.jsonl"
-        self.output_dir = self.base_dir / "imgs"
+        self.output_dir_img = self.base_dir / "imgs"
+        self.output_dir_csv = self.base_dir / "data" / "processed"
         
         # 停用词表
         self.stop_words = {
@@ -90,7 +91,7 @@ class TfidfAnalyzer:
         
         # 4. 保存为 CSV 给论文做表格用
         results_df = pd.DataFrame(results)
-        csv_path = self.output_dir / "tfidf_top_words_by_location.csv"
+        csv_path = self.output_dir_csv / "tfidf_top_words_by_location.csv"
         results_df.to_csv(csv_path, index=False, encoding='utf-8-sig') # utf-8-sig 防止 Excel 打开乱码
         logging.info(f"[INFO] TF-IDF 特征词提取完毕！已保存至 {csv_path.name}")
         
@@ -115,7 +116,7 @@ class TfidfAnalyzer:
             ax.set_ylabel("特征词")
                         
         plt.tight_layout()
-        plot_path = self.output_dir / "tfidf_visualization.png"
+        plot_path = self.output_dir_img / "tfidf_visualization.png"
         plt.savefig(plot_path, dpi=300)
         logging.info(f"[INFO] 可视化图表已生成并保存至 {plot_path.name}")
 
