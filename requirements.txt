@@ -3,3 +3,7 @@ jieba
 scikit-learn 
 matplotlib
 gensim
+transformers 
+torch 
+pandas
+seaborn
