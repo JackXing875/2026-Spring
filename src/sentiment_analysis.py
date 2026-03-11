@@ -3,28 +3,32 @@ import json
 import logging
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
 import seaborn as sns
 from pathlib import Path
 from transformers import pipeline
 
-# 配置 HuggingFace 国内镜像加速 (防止模型下载失败)
 os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 # 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# 设置中文字体，防止图表乱码
-plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'Arial Unicode MS']
+# 设置中文字体
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+font_path = PROJECT_ROOT / "font" / "NotoSansCJK-Regular.ttc"
+
+fm.fontManager.addfont(str(font_path))
+plt.rcParams['font.family'] = 'Noto Sans CJK JP'
 plt.rcParams['axes.unicode_minus'] = False
+
 
 class TransformerSentimentAnalyzer:
     def __init__(self, base_dir: str):
         self.base_dir = Path(base_dir)
         self.input_file = self.base_dir / "data" / "processed" / "structured_interviews.jsonl"
         self.output_dir = self.base_dir / "data" / "processed"
-        
-        # 加载工业级中文情感分析 Transformer 模型 (封神榜 RoBERTa)
-        # 首次运行会自动下载模型权重 (约 400MB)
+
         logging.info("正在加载 Transformer 预训练情感模型...")
         self.sentiment_pipeline = pipeline(
             task="sentiment-analysis",
@@ -58,17 +62,14 @@ class TransformerSentimentAnalyzer:
                 logging.info(f"已处理 {idx} 条...")
                 
             try:
-                # 截断超长文本 (BERT最大支持512 token)
+                # 截断超长文本 
                 truncated_text = text[:500] 
                 result = self.sentiment_pipeline(truncated_text)[0]
                 
                 # 该模型返回标签 'Positive' 或 'Negative'，以及对应的置信度 score
                 label = result['label']
                 confidence = result['score']
-                
-                # 我们将情感标准化为 0 到 100 分的“好感度”
-                # 如果是积极，得分就是 50 + (confidence * 50)
-                # 如果是消极，得分就是 50 - (confidence * 50)
+
                 if label == 'Positive':
                     favorability = 50 + (confidence * 50)
                 else:
@@ -100,7 +101,6 @@ class TransformerSentimentAnalyzer:
         """
         plt.figure(figsize=(10, 6), dpi=300)
         
-        # 使用 seaborn 绘制小提琴图，展示不同地点的好感度分布密度
         sns.violinplot(
             x="location", 
             y="sentiment_score", 
@@ -109,8 +109,7 @@ class TransformerSentimentAnalyzer:
             inner="quartile", # 显示四分位数
             cut=0
         )
-        
-        # 叠加散点图（Swarmplot），展示具体的每一句话的得分落点
+
         sns.swarmplot(
             x="location", 
             y="sentiment_score", 
@@ -137,7 +136,7 @@ class TransformerSentimentAnalyzer:
             样本量='count',
             平均好感度='mean',
             中位数='median',
-            情感方差='std',  # 方差越大，说明该地内部分歧越严重
+            情感方差='std',
             最高分='max',
             最低分='min'
         ).round(2).reset_index()
