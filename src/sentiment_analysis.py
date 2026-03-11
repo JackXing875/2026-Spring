@@ -25,7 +25,7 @@ class TransformerSentimentAnalyzer:
         
         # 加载工业级中文情感分析 Transformer 模型 (封神榜 RoBERTa)
         # 首次运行会自动下载模型权重 (约 400MB)
-        logging.info("正在加载 Transformer 预训练情感模型 (这可能需要一两分钟)...")
+        logging.info("正在加载 Transformer 预训练情感模型...")
         self.sentiment_pipeline = pipeline(
             task="sentiment-analysis",
             model="IDEA-CCNL/Erlangshen-Roberta-110M-Sentiment",
