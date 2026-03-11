@@ -27,7 +27,7 @@ class TransformerSentimentAnalyzer:
     def __init__(self, base_dir: str):
         self.base_dir = Path(base_dir)
         self.input_file = self.base_dir / "data" / "processed" / "structured_interviews.jsonl"
-        self.output_dir = self.base_dir / "data" / "processed"
+        self.output_dir = self.base_dir 
 
         logging.info("正在加载 Transformer 预训练情感模型...")
         self.sentiment_pipeline = pipeline(
@@ -87,7 +87,7 @@ class TransformerSentimentAnalyzer:
         df['sentiment_label'] = labels
         
         # 保存带有情感得分的详细数据表
-        csv_path = self.output_dir / "sentiment_detailed_results.csv"
+        csv_path = self.output_dir / "data" / "processed" / "sentiment_detailed_results.csv"
         df.to_csv(csv_path, index=False, encoding='utf-8-sig')
         logging.info(f"[INFO] 情感测算完成！详细得分已保存至: {csv_path.name}")
         
@@ -126,7 +126,7 @@ class TransformerSentimentAnalyzer:
         plt.legend()
         plt.tight_layout()
         
-        plot_path = self.output_dir / "sentiment_violin_plot.png"
+        plot_path = self.output_dir / "imgs"/ "sentiment_violin_plot.png"
         plt.savefig(plot_path)
         logging.info(f"[INFO] 核密度分布图已生成: {plot_path.name}")
 
