@@ -28,6 +28,8 @@ class TransformerSentimentAnalyzer:
         self.base_dir = Path(base_dir)
         self.input_file = self.base_dir / "data" / "processed" / "structured_interviews.jsonl"
         self.output_dir = self.base_dir 
+        
+        self.interviewers = ['团队', '王', '吴', '杨', '采访者', '访问者', '主持', '主持人']
 
         logging.info("正在加载 Transformer 预训练情感模型...")
         self.sentiment_pipeline = pipeline(
@@ -38,20 +40,21 @@ class TransformerSentimentAnalyzer:
         logging.info("[INFO] 模型加载完毕！")
 
     def load_data(self):
-        """读取清洗好的黄金语料"""
+        """读取清洗好的黄金语料，并剔除采访团队的发言"""
         data = []
         with open(self.input_file, 'r', encoding='utf-8') as f:
             for line in f:
                 record = json.loads(line)
-                # 过滤掉太短的无意义短句（小于5个字通常无法判断情感）
-                if len(record['text']) >= 5:
+                if len(record['text']) >= 5 and record['speaker'].strip() not in self.interviewers:
                     data.append(record)
+                    
         df = pd.DataFrame(data)
+        logging.info(f"[INFO] 成功加载 {len(df)} 条真实的受访者语料（已自动剔除团队提问）。")
         return df
 
     def analyze_sentiment(self):
         df = self.load_data()
-        logging.info(f"[INFO] 开始对 {len(df)} 条访谈语句进行深度语义情感测算...")
+        logging.info(f"[INFO] 开始对 {len(df)} 条受访者语句进行深度语义情感测算...")
 
         scores = []
         labels = []
@@ -119,21 +122,25 @@ class TransformerSentimentAnalyzer:
             size=3
         )
 
-        plt.title("不同地域对AI数字人赋能模式的情感倾向（好感度）核密度分布", fontsize=15, pad=15)
+        plt.title("不同地域受访者对AI数字人赋能模式的情感倾向（好感度）核密度分布", fontsize=15, pad=15)
         plt.xlabel("地域 / 访谈主体", fontsize=12)
         plt.ylabel("情感好感度得分 (0=极度排斥, 100=极度拥护)", fontsize=12)
         plt.axhline(50, color='red', linestyle='--', alpha=0.5, label='中性基准线 (50分)')
         plt.legend()
         plt.tight_layout()
         
-        plot_path = self.output_dir / "imgs"/ "sentiment_violin_plot.png"
+        # 确保图片保存目录存在
+        img_dir = self.output_dir / "imgs"
+        img_dir.mkdir(parents=True, exist_ok=True)
+        plot_path = img_dir / "sentiment_violin_plot.png"
+        
         plt.savefig(plot_path)
         logging.info(f"[INFO] 核密度分布图已生成: {plot_path.name}")
 
     def generate_statistical_report(self, df):
         """生成用于论文的描述性统计表格"""
         report = df.groupby('location')['sentiment_score'].agg(
-            样本量='count',
+            真实受访样本量='count',
             平均好感度='mean',
             中位数='median',
             情感方差='std',
@@ -146,7 +153,7 @@ class TransformerSentimentAnalyzer:
         logging.info(f"[INFO] 统计学摘要表已生成: {report_path.name}")
         
         print("\n" + "="*50)
-        print("[INFO] 区域情感(好感度)核心统计摘要")
+        print("[INFO] 区域受访者真实情感(好感度)核心统计摘要")
         print("="*50)
         print(report.to_string(index=False))
         print("="*50)
