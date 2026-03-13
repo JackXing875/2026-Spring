@@ -54,13 +54,17 @@ def clean_and_tokenize_interview(text, stopwords, allowed_pos=('n', 'v', 'vn', '
 
 def analyze_interview_topics(jsonl_path, num_topics=3, num_words=6):
     stopwords = get_interview_stopwords()
+
+    interviewers = ['团队', '王', '吴', '杨', '徐', '邢']
     
     data = []
     with open(jsonl_path, 'r', encoding='utf-8') as f:
         for line in f:
             if line.strip():
                 try:
-                    data.append(json.loads(line))
+                    record = json.loads(line)
+                    if record.get('speaker', '').strip() not in interviewers:
+                        data.append(record)
                 except json.JSONDecodeError:
                     continue
     

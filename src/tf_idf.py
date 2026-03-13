@@ -45,14 +45,17 @@ class TfidfAnalyzer:
         }
 
     def load_data(self):
-        """读取 JSONL 数据并转为 DataFrame"""
+        """读取 JSONL 数据并转为 DataFrame (已屏蔽采访团队发言)"""
         data = []
+        interviewers = ['团队', '王', '吴', '杨', '徐', '邢']
+        
         with open(self.input_file, 'r', encoding='utf-8') as f:
             for line in f:
-                data.append(json.loads(line))
+                record = json.loads(line)
+                if record.get('speaker', '').strip() not in interviewers:
+                    data.append(record)
         
         df = pd.DataFrame(data)
-        logging.info(f"成功加载数据，共 {len(df)} 条发言。")
         return df
 
     def preprocess_text(self, text):
