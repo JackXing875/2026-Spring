@@ -69,7 +69,6 @@ def analyze_interview_topics(jsonl_path, num_topics=3, num_words=6):
                     continue
     
     df = pd.DataFrame(data)
-    # 按地点 (location) 进行分组，对比河北、宁夏和企业端的不同主题
     grouped = df.groupby('location')
     results = {}
 
@@ -150,13 +149,11 @@ def analyze_interview_topics(jsonl_path, num_topics=3, num_words=6):
     return results
 
 if __name__ == "__main__":
-    # 自动定位项目根目录，适配你的 2026-Spring 架构
     PROJECT_ROOT = Path(__file__).resolve().parent.parent
     
     input_path = PROJECT_ROOT / "data" / "processed" / "structured_interviews.jsonl"
     output_path = PROJECT_ROOT / "data" / "processed" / "lda_analysis_results.json"
     
-    # 提取最具代表性的核心主题词
     final_results = analyze_interview_topics(input_path, num_topics=3, num_words=6)
     
     if final_results:
